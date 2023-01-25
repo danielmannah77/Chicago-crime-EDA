@@ -1,0 +1,72 @@
+this file reports on an exploratory descriptive analysis of the Chicago Crime public data set using SQL on Google Bigquery.
+I created this project mainly to practice the techniques I've learned for data manipulation using SQL.
+Feel free to try these queries for your self on bigquery!
+I also visualised the results of some of these queries on Tableau. You can find the dashboard at:https://public.tableau.com/app/profile/daniel.mannah/viz/ChicagocrimeEDA/Story1
+
+To determine the total number of reported crimes for each category, I used the following query (note that the column containing the crime category is called primary_type):
+SELECT primary_type, COUNT(*) 
+FROM `bigquery-public-data.chicago_crime.crime`
+GROUP BY primary_type
+
+Next, I used this query to find out the most common crime category for each year:
+
+WITH rankings AS (SELECT year, 
+primary_type, 
+COUNT(primary_type) AS num_crimes, 
+DENSE_RANK()OVER(PARTITION BY year ORDER BY COUNT(primary_type) DESC)
+AS rank
+FROM `bigquery-public-data.chicago_crime.crime`
+GROUP BY year, primary_type
+ORDER BY year DESC, num_crimes DESC)
+
+SELECT year, primary_type, num_crimes
+FROM rankings
+WHERE rank = 1
+ORDER BY year DESC
+
+The arrest rate for each crime category was determined using this query:
+
+SELECT primary_type,
+ COUNT(primary_type) AS number,
+ ROUND(AVG ( CASE WHEN arrest = true THEN 1
+  ELSE 0 END), 2) AS arrest_rate
+FROM `bigquery-public-data.chicago_crime.crime`
+GROUP BY primary_type
+ORDER BY arrest_rate DESC
+
+I used this query to find out the most common locations for violent crimes to occur:
+
+WITH violent_crimes AS (SELECT primary_type, COUNT(primary_type)
+FROM `bigquery-public-data.chicago_crime.crime`
+WHERE primary_type IN ('HOMICIDE', 'ROBBERY', 'BATTERY', 'DOMESTIC VIOLENCE') OR primary_type LIKE ('%ASSAULT%')
+GROUP BY primary_type)
+
+SELECT location_description, COUNT(primary_type) AS num_crimes,
+FROM `bigquery-public-data.chicago_crime.crime`
+WHERE primary_type IN (SELECT primary_type FROM violent_crimes)
+GROUP BY location_description
+ORDER BY num_crimes DESC
+LIMIT 10
+
+I also wanted to find out whether theres is seasonality to the number of homicides, i.e whether the amount depends on the time of year:
+
+SELECT year, EXTRACT(MONTH FROM DATE) AS month, COUNT(primary_type) AS num_homicides
+FROM `bigquery-public-data.chicago_crime.crime`
+WHERE primary_type = 'HOMICIDE'
+GROUP BY year, month
+ORDER BY year, month
+
+Finally, I thought it would be interesting to find out how much time passes between homicides on average, and how this differed for each year:
+
+SELECT year, ROUND(AVG(DATE_DIFF(date, previous_date, HOUR)),2) AS hours_between
+FROM
+(SELECT case_number, year, date, LAG(date, 1) OVER(ORDER BY date) AS previous_date
+FROM `bigquery-public-data.chicago_crime.crime`
+where primary_type = 'HOMICIDE'
+ORDER BY date)
+GROUP BY year
+ORDER BY year
+
+
+
+
